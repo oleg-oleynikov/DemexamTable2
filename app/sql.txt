@@ -1,0 +1,607 @@
+CREATE TABLE partner_types (
+    partner_type_id SERIAL PRIMARY KEY,
+    type_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+CREATE TABLE partners (
+    partner_id SERIAL PRIMARY KEY,
+    partner_type_id INT NOT NULL REFERENCES partner_types(partner_type_id),
+    company_name VARCHAR(255) NOT NULL,
+    legal_address TEXT NOT NULL,
+    inn VARCHAR(12) NOT NULL UNIQUE,
+    director_name VARCHAR(255) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    logo BYTEA,
+    current_rating INT CHECK (current_rating BETWEEN 1 AND 5),
+    total_sales NUMERIC(15,2) DEFAULT 0
+);
+
+CREATE TABLE sales_points (
+    point_id SERIAL PRIMARY KEY,
+    partner_id INT NOT NULL REFERENCES partners(partner_id) ON DELETE CASCADE,
+    point_type VARCHAR(50) NOT NULL,
+    address TEXT
+);
+
+CREATE TABLE employees (
+    employee_id SERIAL PRIMARY KEY,
+    full_name VARCHAR(255) NOT NULL,
+    position VARCHAR(100) NOT NULL
+);
+
+CREATE TABLE material_types (
+    material_type_id SERIAL PRIMARY KEY,
+    type_name VARCHAR(50) NOT NULL UNIQUE,
+    defect_rate NUMERIC(5,2) DEFAULT 0.00
+);
+
+CREATE TABLE suppliers (
+    supplier_id SERIAL PRIMARY KEY,
+    company_name VARCHAR(255) NOT NULL,
+    inn VARCHAR(12) NOT NULL UNIQUE
+);
+
+CREATE TABLE materials (
+    material_id SERIAL PRIMARY KEY,
+    material_type_id INT NOT NULL REFERENCES material_types(material_type_id),
+    name VARCHAR(255) NOT NULL,
+    supplier_id INT REFERENCES suppliers(supplier_id),
+    package_quantity INT NOT NULL,
+    unit VARCHAR(20) NOT NULL,
+    description TEXT,
+    image BYTEA,
+    current_cost NUMERIC(10,2) NOT NULL,
+    current_quantity NUMERIC(12,3) NOT NULL,
+    min_quantity NUMERIC(12,3) NOT NULL
+);
+
+CREATE TABLE product_types (
+    product_type_id SERIAL PRIMARY KEY,
+    type_name VARCHAR(50) NOT NULL UNIQUE,
+    type_coefficient NUMERIC(10,4) NOT NULL DEFAULT 1.0000
+);
+
+CREATE TABLE products (
+    product_id SERIAL PRIMARY KEY,
+    product_type_id INT NOT NULL REFERENCES product_types(product_type_id),
+    article VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    image BYTEA,
+    min_partner_price NUMERIC(12,2) NOT NULL,
+    length NUMERIC(8,2),
+    width NUMERIC(8,2),
+    height NUMERIC(8,2),
+    weight_net NUMERIC(8,2),
+    weight_gross NUMERIC(8,2),
+    quality_cert BYTEA,
+    standard VARCHAR(100),
+    production_time INTERVAL,
+    cost_price NUMERIC(12,2) NOT NULL,
+    workshop_number INT
+);
+
+CREATE TABLE product_materials (
+    product_material_id SERIAL PRIMARY KEY,
+    product_id INT NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    material_id INT NOT NULL REFERENCES materials(material_id),
+    quantity NUMERIC(10,3) NOT NULL
+);
+
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    partner_id INT NOT NULL REFERENCES partners(partner_id),
+    manager_id INT NOT NULL REFERENCES employees(employee_id),
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    status VARCHAR(20) NOT NULL 
+        CHECK (status IN ('NEW', 'APPROVED', 'PAID', 'PRODUCTION', 'SHIPPED', 'COMPLETED', 'CANCELLED')),
+    prepayment_received BOOLEAN NOT NULL DEFAULT FALSE,
+    prepayment_date DATE,
+    full_payment_received BOOLEAN NOT NULL DEFAULT FALSE,
+    delivery_method VARCHAR(100),
+    total_amount NUMERIC(15,2) NOT NULL,
+    discount NUMERIC(5,2) DEFAULT 0
+);
+
+CREATE TABLE order_items (
+    item_id SERIAL PRIMARY KEY,
+    order_id INT NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
+    product_id INT NOT NULL REFERENCES products(product_id),
+    quantity INT NOT NULL CHECK (quantity > 0),
+    unit_price NUMERIC(12,2) NOT NULL,
+    production_deadline DATE
+);
+
+CREATE TABLE partner_rating_history (
+    record_id SERIAL PRIMARY KEY,
+    partner_id INT NOT NULL REFERENCES partners(partner_id) ON DELETE CASCADE,
+    old_rating INT NOT NULL,
+    new_rating INT NOT NULL,
+    changed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    changed_by INT NOT NULL REFERENCES employees(employee_id)
+);
+
+CREATE TABLE sales_history (
+    sale_id SERIAL PRIMARY KEY,
+    partner_id INT NOT NULL REFERENCES partners(partner_id),
+    product_id INT NOT NULL REFERENCES products(product_id),
+    sale_date DATE NOT NULL DEFAULT CURRENT_DATE,
+    quantity INT NOT NULL,
+    unit_price NUMERIC(12,2) NOT NULL
+);
+
+CREATE TABLE material_transactions (
+    transaction_id SERIAL PRIMARY KEY,
+    material_id INT NOT NULL REFERENCES materials(material_id),
+    quantity NUMERIC(12,3) NOT NULL,
+    transaction_type VARCHAR(20) NOT NULL 
+        CHECK (transaction_type IN ('RECEIPT', 'RESERVE', 'CONSUME', 'WRITE_OFF')),
+    transaction_time TIMESTAMP NOT NULL DEFAULT NOW(),
+    employee_id INT NOT NULL REFERENCES employees(employee_id),
+    order_id INT REFERENCES orders(order_id)
+);
+
+CREATE TABLE product_price_history (
+    price_id SERIAL PRIMARY KEY,
+    product_id INT NOT NULL REFERENCES products(product_id) ON DELETE CASCADE,
+    old_price NUMERIC(12,2) NOT NULL,
+    new_price NUMERIC(12,2) NOT NULL,
+    changed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    changed_by INT NOT NULL REFERENCES employees(employee_id)
+);
+
+
+INSERT INTO material_types (type_name, defect_rate)
+VALUES 
+    ('Бумага', 0.70),
+    ('Краска', 0.50),
+    ('Клей', 0.15),
+    ('Дисперсия', 0.20)
+
+
+-- Скрипт для вставки данных в таблицу materials
+INSERT INTO materials (
+    name,
+    material_type_id,
+    current_cost,
+    current_quantity,
+    min_quantity,
+    package_quantity,
+    unit
+) VALUES
+('Бумага-основа с покрытием для флизелиновых обоев', (SELECT material_type_id FROM material_types WHERE type_name = 'Бумага'), 1700.00, 2500.00, 1000.00, 100, 'рул'),
+('Бумага-основа для флизелиновых обоев', (SELECT material_type_id FROM material_types WHERE type_name = 'Бумага'), 1500.00, 3000.00, 1000.00, 100, 'рул'),
+('Бумага обойная для вспененных виниловых обоев', (SELECT material_type_id FROM material_types WHERE type_name = 'Бумага'), 1200.00, 1500.00, 1000.00, 100, 'рул'),
+('Флизелин', (SELECT material_type_id FROM material_types WHERE type_name = 'Бумага'), 1600.00, 2000.00, 1000.00, 140, 'рул'),
+('Бумага-основа для обоев марки АФ', (SELECT material_type_id FROM material_types WHERE type_name = 'Бумага'), 1200.00, 2000.00, 1000.00, 100, 'рул'),
+('Бумага с подложкой устойчивая к атмосферным воздействиям', (SELECT material_type_id FROM material_types WHERE type_name = 'Бумага'), 3500.00, 2000.00, 800.00, 50, 'рул'),
+('Концентрат водоразбавляемой печатной краски', (SELECT material_type_id FROM material_types WHERE type_name = 'Краска'), 1500.00, 550.00, 500.00, 200, 'кг'),
+('Перламутровый пигмент', (SELECT material_type_id FROM material_types WHERE type_name = 'Краска'), 3100.00, 200.00, 100.00, 10, 'кг'),
+('Цветная пластизоль', (SELECT material_type_id FROM material_types WHERE type_name = 'Краска'), 650.00, 200.00, 100.00, 5, 'кг'),
+('Водорастворимая краска водная', (SELECT material_type_id FROM material_types WHERE type_name = 'Краска'), 500.00, 400.00, 300.00, 25, 'кг'),
+('Водорастворимая краска спецводная', (SELECT material_type_id FROM material_types WHERE type_name = 'Краска'), 700.00, 350.00, 300.00, 25, 'кг'),
+('Металлический пигмент', (SELECT material_type_id FROM material_types WHERE type_name = 'Краска'), 4100.00, 250.00, 100.00, 15, 'кг'),
+('Сухой клей на основе ПВС', (SELECT material_type_id FROM material_types WHERE type_name = 'Клей'), 360.00, 700.00, 500.00, 50, 'кг'),
+('Дисперсия анионно-стабилизированного стирол-акрилового сополимера', (SELECT material_type_id FROM material_types WHERE type_name = 'Клей'), 170.00, 800.00, 660.00, 220, 'л'),
+('Стирол-акриловая дисперсия для производства обоев', (SELECT material_type_id FROM material_types WHERE type_name = 'Дисперсия'), 14.90, 2000.00, 880.00, 220, 'л'),
+('Стирол-акриловая дисперсия для гидрофобных покрытий', (SELECT material_type_id FROM material_types WHERE type_name = 'Дисперсия'), 14.90, 1200.00, 880.00, 220, 'л'),
+('Акрилат-винилацетатная дисперсия для производства бумаги', (SELECT material_type_id FROM material_types WHERE type_name = 'Дисперсия'), 15.50, 1000.00, 660.00, 220, 'л'),
+('Диспергатор минеральных пигментов и наполнителей', (SELECT material_type_id FROM material_types WHERE type_name = 'Дисперсия'), 16.00, 400.00, 360.00, 120, 'л'),
+('Ассоциативный акриловый загуститель', (SELECT material_type_id FROM material_types WHERE type_name = 'Дисперсия'), 16.50, 400.00, 360.00, 120, 'л'),
+('Акриловая дисперсия', (SELECT material_type_id FROM material_types WHERE type_name = 'Дисперсия'), 14.90, 1000.00, 880.00, 220, 'л');
+
+
+INSERT INTO product_types (type_name, type_coefficient) VALUES
+('Декоративные обои', 5.5),
+('Фотообои', 7.54),
+('Обои под покраску', 3.25),
+('Стеклообои', 2.5)
+
+
+
+INSERT INTO products (
+    product_type_id, 
+    name, 
+    description, 
+    article, 
+    min_partner_price, 
+    width
+) VALUES
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Декоративные обои'),
+    'Декоративные обои',
+    'Обои из природного материала Традиционный принт светло-коричневые',
+    '1549922',
+    16950.00,
+    0.91
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Декоративные обои'),
+    'Декоративные обои',
+    'Обои флизелиновые Эвелин светло-серые',
+    '1028248',
+    15200.00,
+    1.06
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Декоративные обои'),
+    'Декоративные обои',
+    'Флизелиновые обои Принт Вензель серые',
+    '1658953',
+    16200.96,
+    0.68
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Декоративные обои'),
+    'Декоративные обои',
+    'Обои бумажные Полосы цвет бежевый',
+    '1758375',
+    13500.96,
+    0.68
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Декоративные обои'),
+    'Декоративные обои',
+    'Обои флизелиновые Лилия бежевые',
+    '1259474',
+    9750.79,
+    1.06
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Фотообои'),
+    'Фотообои',
+    'Фотообои флизелиновые Горы 500x270 см',
+    '2018556',
+    15880.00,
+    0.50
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Фотообои'),
+    'Фотообои',
+    'Фотообои флизелиновые 3D Лес и горы 300x280 см',
+    '2118827',
+    12500.96,
+    0.30
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Фотообои'),
+    'Фотообои',
+    'Фотообои флизелиновые Узор 300x270 см',
+    '2026662',
+    8780.69,
+    0.30
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Фотообои'),
+    'Фотообои',
+    'Фотообои Тропики 290x260 см',
+    '2759324',
+    6980.00,
+    0.29
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Фотообои'),
+    'Фотообои',
+    'Фотообои флизелиновые 3D Пейзаж 300x280 см',
+    '2115947',
+    16850.00,
+    0.30
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Обои под покраску'),
+    'Обои под покраску',
+    'Обои под покраску флизелиновые Рельеф',
+    '3028272',
+    11080.00,
+    0.75
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Обои под покраску'),
+    'Обои под покраску',
+    'Обои под покраску флизелиновые цвет белый',
+    '3130981',
+    4320.56,
+    1.06
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Обои под покраску'),
+    'Обои под покраску',
+    'Обои под покраску флизелиновые Кирпичная стена',
+    '3159043',
+    15750.00,
+    1.06
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Обои под покраску'),
+    'Обои под покраску',
+    'Обои под покраску Рисунок Штукатурка белые',
+    '3118827',
+    5890.00,
+    1.06
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Обои под покраску'),
+    'Обои под покраску',
+    'Обои под покраску флизелиновые однотонные цвет белый',
+    '3033136',
+    3390.00,
+    1.06
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Стеклообои'),
+    'Стеклообои',
+    'Стеклообои Рогожка белые',
+    '4029272',
+    5898.00,
+    1.00
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Стеклообои'),
+    'Стеклообои',
+    'Стеклохолст',
+    '4029784',
+    2998.99,
+    1.00
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Стеклообои'),
+    'Стеклообои',
+    'Стеклообои Средняя елка белые',
+    '4588376',
+    5500.00,
+    1.00
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Стеклообои'),
+    'Стеклообои',
+    'Стеклообои Геометрические фигуры белые',
+    '4559898',
+    5369.00,
+    1.00
+),
+(
+    (SELECT product_type_id FROM product_types WHERE type_name = 'Стеклообои'),
+    'Стеклообои',
+    'Стеклохолст малярный Паутинка',
+    '4028048',
+    1750.00,
+    1.00
+);
+INSERT INTO product_materials (product_id, material_id, quantity)
+VALUES
+(
+    (SELECT product_id FROM products WHERE article = '1028248'),
+    (SELECT material_id FROM materials WHERE name = 'Акрилат-винилацетатная дисперсия для производства бумаги'),
+    1.95
+),
+(
+    (SELECT product_id FROM products WHERE article = '1028248'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага-основа для флизелиновых обоев'),
+    4.60
+),
+(
+    (SELECT product_id FROM products WHERE article = '1028248'),
+    (SELECT material_id FROM materials WHERE name = 'Водорастворимая краска спецводная'),
+    3.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '1028248'),
+    (SELECT material_id FROM materials WHERE name = 'Дисперсия анионно-стабилизированного стирол-акрилового сополимера'),
+    0.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '1028248'),
+    (SELECT material_id FROM materials WHERE name = 'Металлический пигмент'),
+    0.45
+),
+(
+    (SELECT product_id FROM products WHERE article = '4588376'),
+    (SELECT material_id FROM materials WHERE name = 'Акрилат-винилацетатная дисперсия для производства бумаги'),
+    0.21
+),
+(
+    (SELECT product_id FROM products WHERE article = '4588376'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага обойная для вспененных виниловых обоев'),
+    2.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '4588376'),
+    (SELECT material_id FROM materials WHERE name = 'Перламутровый пигмент'),
+    0.35
+),
+(
+    (SELECT product_id FROM products WHERE article = '2759324'),
+    (SELECT material_id FROM materials WHERE name = 'Акриловая дисперсия'),
+    1.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '2759324'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага-основа для обоев марки АФ'),
+    1.60
+),
+(
+    (SELECT product_id FROM products WHERE article = '2759324'),
+    (SELECT material_id FROM materials WHERE name = 'Дисперсия анионно-стабилизированного стирол-акрилового сополимера'),
+    0.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '2759324'),
+    (SELECT material_id FROM materials WHERE name = 'Концентрат водоразбавляемой печатной краски'),
+    2.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '2759324'),
+    (SELECT material_id FROM materials WHERE name = 'Цветная пластизоль'),
+    1.25
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Акриловая дисперсия'),
+    1.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага с подложкой устойчивая к атмосферным воздействиям'),
+    2.20
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Водорастворимая краска спецводная'),
+    5.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Дисперсия анионно-стабилизированного стирол-акрилового сополимера'),
+    0.70
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Перламутровый пигмент'),
+    1.25
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Акриловая дисперсия'),
+    1.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага с подложкой устойчивая к атмосферным воздействиям'),
+    2.20
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Водорастворимая краска спецводная'),
+    5.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Дисперсия анионно-стабилизированного стирол-акрилового сополимера'),
+    0.70
+),
+(
+    (SELECT product_id FROM products WHERE article = '2115947'),
+    (SELECT material_id FROM materials WHERE name = 'Перламутровый пигмент'),
+    1.25
+),
+(
+    (SELECT product_id FROM products WHERE article = '2026662'),
+    (SELECT material_id FROM materials WHERE name = 'Акриловая дисперсия'),
+    1.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '2026662'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага-основа для обоев марки АФ'),
+    3.56
+),
+(
+    (SELECT product_id FROM products WHERE article = '2026662'),
+    (SELECT material_id FROM materials WHERE name = 'Водорастворимая краска спецводная'),
+    3.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '2026662'),
+    (SELECT material_id FROM materials WHERE name = 'Дисперсия анионно-стабилизированного стирол-акрилового сополимера'),
+    0.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '1549922'),
+    (SELECT material_id FROM materials WHERE name = 'Ассоциативный акриловый загуститель'),
+    0.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '1549922'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага с подложкой устойчивая к атмосферным воздействиям'),
+    2.90
+),
+(
+    (SELECT product_id FROM products WHERE article = '1549922'),
+    (SELECT material_id FROM materials WHERE name = 'Водорастворимая краска водная'),
+    3.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '1549922'),
+    (SELECT material_id FROM materials WHERE name = 'Дисперсия анионно-стабилизированного стирол-акрилового сополимера'),
+    0.20
+),
+(
+    (SELECT product_id FROM products WHERE article = '1549922'),
+    (SELECT material_id FROM materials WHERE name = 'Перламутровый пигмент'),
+    0.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '4559898'),
+    (SELECT material_id FROM materials WHERE name = 'Ассоциативный акриловый загуститель'),
+    0.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '4559898'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага обойная для вспененных виниловых обоев'),
+    3.60
+),
+(
+    (SELECT product_id FROM products WHERE article = '4559898'),
+    (SELECT material_id FROM materials WHERE name = 'Дисперсия анионно-стабилизированного стирол-акрилового сополимера'),
+    0.20
+),
+(
+    (SELECT product_id FROM products WHERE article = '3159043'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага обойная для вспененных виниловых обоев'),
+    2.55
+),
+(
+    (SELECT product_id FROM products WHERE article = '3159043'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага с подложкой устойчивая к атмосферным воздействиям'),
+    2.55
+),
+(
+    (SELECT product_id FROM products WHERE article = '3159043'),
+    (SELECT material_id FROM materials WHERE name = 'Стирол-акриловая дисперсия для гидрофобных покрытий'),
+    1.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '3159043'),
+    (SELECT material_id FROM materials WHERE name = 'Сухой клей на основе ПВС'),
+    2.90
+),
+(
+    (SELECT product_id FROM products WHERE article = '1758375'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага-основа для обоев марки АФ'),
+    3.60
+),
+(
+    (SELECT product_id FROM products WHERE article = '1758375'),
+    (SELECT material_id FROM materials WHERE name = 'Водорастворимая краска водная'),
+    4.75
+),
+(
+    (SELECT product_id FROM products WHERE article = '1758375'),
+    (SELECT material_id FROM materials WHERE name = 'Перламутровый пигмент'),
+    1.00
+),
+(
+    (SELECT product_id FROM products WHERE article = '1758375'),
+    (SELECT material_id FROM materials WHERE name = 'Стирол-акриловая дисперсия для производства обоев'),
+    0.15
+),
+(
+    (SELECT product_id FROM products WHERE article = '1758375'),
+    (SELECT material_id FROM materials WHERE name = 'Сухой клей на основе ПВС'),
+    0.50
+),
+(
+    (SELECT product_id FROM products WHERE article = '3118827'),
+    (SELECT material_id FROM materials WHERE name = 'Бумага-основа для обоев марки АФ'),
+    3.70
+),
+(
+    (SELECT product_id FROM products WHERE article = '3118827'),
+    (SELECT material_id FROM materials WHERE name = 'Диспергатор минеральных пигментов и наполнителей'),
+    1.30
+),
+(
+    (SELECT product_id FROM products WHERE article = '3118827'),
+    (SELECT material_id FROM materials WHERE name = 'Стирол-акриловая дисперсия для гидрофобных покрытий'),
+    1.00
+);
